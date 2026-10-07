@@ -8,6 +8,10 @@ pub struct Model {
 }
 
 impl Model {
+    pub fn parse(input: &str) -> Self {
+        crate::parser::parse(input)
+    }
+
     fn cycles(&self) -> usize {
         //compute based on the max of regions and signals
         todo!()

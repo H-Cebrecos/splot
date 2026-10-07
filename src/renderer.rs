@@ -25,7 +25,7 @@ impl Canvas {
             &mut canvas,
         );
         cursor = render_clk(cursor, &model.clock, 10, model.gutter(), &mut canvas);
-        cursor = render_notes(cursor, &model.notes, &mut canvas);
+        cursor = render_notes(cursor + 1, &model.notes, &mut canvas);
         _ = cursor;
         canvas
     }

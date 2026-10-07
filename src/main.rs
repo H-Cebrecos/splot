@@ -1,9 +1,3 @@
-use crate::renderer::Canvas;
-
-mod model;
-mod parser;
-mod renderer;
-
 const TEXT: &str = r#"
     clk: 2 ...
     regions:  start:3 | middle_name_too_long : 2 | end:4+ | _:
@@ -11,7 +5,5 @@ const TEXT: &str = r#"
     note b : some longer text that should exceed the maximum width allocated through cycles
 "#;
 fn main() {
-    let model = parser::parse(TEXT);
-
-    print!("{}", Canvas::render(&model));
+    print!("{}", splot::render(TEXT));
 }
