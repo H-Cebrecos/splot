@@ -29,7 +29,11 @@ pub fn parse(src: &str) -> Model {
             // Markers are not parsed yet.
             "^" | "v" => todo!(),
             // Remaining stuff with a semicolon are signals (if valid)
-            _ if line.contains(':') => todo!(), //model.signals.push(Signal),
+            _ if line.contains(':') => {
+                if let Some(signal) = parse_signal(line) {
+                    model.signals.push(signal);
+                }
+            }
             // Ignore unknown lines
             _ => {}
         }
@@ -135,4 +139,76 @@ fn parse_region(piece: &str) -> Option<Region> {
         duration: spec.trim_end_matches('+').trim().parse().ok(),
         stretch: spec.ends_with('+'),
     })
+}
+
+fn parse_signal(line: &str) -> Option<Signal> {
+    let Some((name, rest)) = line.split_once(':') else {
+        return None;
+    };
+
+    if name.is_empty() {
+        return None;
+    }
+
+    Some(Signal {
+        name: name.to_string(),
+        segments: parse_segments(rest),
+    })
+}
+
+fn parse_segments(signal: &str) -> Vec<Segment> {
+    let mut segments: Vec<Segment> = Vec::new();
+    let mut chars = signal.trim().chars();
+
+    while let Some(c) = chars.next() {
+        let (value, cycles) = match c {
+            '0' => (Value::Low, 1),
+            '1' => (Value::High, 1),
+            'x' | 'X' => (Value::Unknown, 1),
+            // take_while also consumes the closing bracket. An unterminated
+            // bracket simply runs to the end of the line.
+            '[' => {
+                let inner: String = chars.by_ref().take_while(|&c| c != ']').collect();
+                match parse_bus(&inner) {
+                    Some(parsed) => parsed,
+                    None => continue,
+                }
+            }
+            '.' => {
+                match segments.last_mut() {
+                    Some(last) => last.cycles += 1,
+                    // Before the first token the value is unknown
+                    None => segments.push(Segment {
+                        value: Value::Unknown,
+                        cycles: 1,
+                    }),
+                }
+                continue;
+            }
+            // Whitespace and anything unrecognized.
+            _ => continue,
+        };
+        segments.push(Segment { value, cycles });
+    }
+
+    segments
+}
+
+/// Parses the inside of `[...]`: an optional `N:` duration, then the text.
+fn parse_bus(inner: &str) -> Option<(Value, usize)> {
+    let (cycles, text) = match inner.split_once(':') {
+        Some((n, rest)) => match n.trim().parse::<usize>() {
+            Ok(n) => (n, rest),
+            // The prefix isn't a number, so the colon belongs to the text.
+            Err(_) => (1, inner),
+        },
+        None => (1, inner),
+    };
+    if cycles == 0 {
+        return None;
+    }
+
+    let text = text.trim();
+    let value = Value::Bus(text.to_string());
+    Some((value, cycles))
 }

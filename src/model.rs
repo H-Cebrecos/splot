@@ -12,9 +12,13 @@ impl Model {
         crate::parser::parse(input)
     }
 
-    fn cycles(&self) -> usize {
+    pub fn cycles(&self) -> usize {
         //compute based on the max of regions and signals
-        todo!()
+        let regions: usize = self.regions.iter().filter_map(|r| r.duration).sum();
+        self.signals
+            .iter()
+            .map(Signal::cycles)
+            .fold(regions, usize::max)
     }
 
     /// Width of the widest row label that will be drawn. The clock only
@@ -87,8 +91,29 @@ pub struct Region {
     pub stretch: bool,
 }
 
-struct Signal {
-    name: String,
+#[derive(PartialEq, Eq)]
+pub enum Value {
+    Low,
+    High,
+    Unknown,
+    Bus(String),
+}
+
+/// Waveform segments of the same value
+pub struct Segment {
+    pub value: Value,
+    pub cycles: usize,
+}
+
+pub struct Signal {
+    pub name: String,
+    pub segments: Vec<Segment>,
+}
+
+impl Signal {
+    fn cycles(&self) -> usize {
+        self.segments.iter().map(|s| s.cycles).sum()
+    }
 }
 
 struct Marker;

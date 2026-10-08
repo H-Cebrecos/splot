@@ -2,7 +2,7 @@
 
 use core::fmt;
 
-use crate::model::{Clock, ClockStyle, Model, Note, Region};
+use crate::model::*;
 
 /// A grid of characters that grows on write. Writing a space leaves
 /// whatever was already there, so later draws overlay earlier ones.
@@ -19,12 +19,25 @@ impl Canvas {
         cursor = render_regions(
             cursor,
             &model.regions,
-            10,
+            model.cycles(),
             &model.clock,
             model.gutter(),
             &mut canvas,
         );
-        cursor = render_clk(cursor, &model.clock, 10, model.gutter(), &mut canvas);
+        cursor = render_clk(
+            cursor,
+            &model.clock,
+            model.cycles(),
+            model.gutter(),
+            &mut canvas,
+        );
+        cursor = render_signals(
+            cursor,
+            &model.signals,
+            &model.clock,
+            model.gutter(),
+            &mut canvas,
+        );
         cursor = render_notes(cursor + 1, &model.notes, &mut canvas);
         _ = cursor;
         canvas
@@ -215,19 +228,7 @@ fn render_regions(
         canvas.put(cursor, left, if i == 0 { '├' } else { '┼' });
 
         if let Some(name) = &region.label {
-            let room = right - left - 1;
-            let boxed = format!("╴{name}╶");
-            // `*` stands in for any label that doesn't fit.
-            let text = if boxed.chars().count() <= room {
-                boxed
-            } else {
-                "*".to_string()
-            };
-            if room > 0 {
-                // Integer division puts the odd leftover dash after the label.
-                let offset = (room - text.chars().count()) / 2;
-                canvas.text(cursor, left + 1 + offset, &text);
-            }
+            draw_label(canvas, cursor, left, right, name);
         }
 
         start = end;
@@ -235,4 +236,89 @@ fn render_regions(
 
     canvas.put(cursor, gutter + start * cycle_cols, '┤');
     cursor + 1
+}
+
+/// Draws `╴text╶` centered between the boundary columns `left` and `right`,
+/// or a `*` when it doesn't fit.
+fn draw_label(canvas: &mut Canvas, row: usize, left: usize, right: usize, text: &str) {
+    let room = right - left - 1;
+    if room == 0 {
+        return;
+    }
+    let boxed = format!("╴{text}╶");
+    let label = if boxed.chars().count() <= room {
+        boxed
+    } else {
+        "*".to_string()
+    };
+    // Integer division puts the odd leftover column after the label.
+    let offset = (room - label.chars().count()) / 2;
+    canvas.text(row, left + 1 + offset, &label);
+}
+
+/// The glyph filling a segment's columns.
+fn level_glyph(value: &Value) -> char {
+    match value {
+        Value::Low => '▁',
+        Value::High => '▔',
+        Value::Unknown => '░',
+        Value::Bus(_) => '─',
+    }
+}
+
+/// The glyph at a segment boundary, joining the previous value to the next one.
+fn boundary_glyph(previous: Option<&Value>, next: &Value) -> char {
+    match (previous, next) {
+        // The first segment has no leading transition.
+        (None, next) => level_glyph(next),
+        (Some(Value::Low), Value::High) => '╱',
+        (Some(Value::High), Value::Low) => '╲',
+        // Equal levels continue straight. Two buses never do, even with the
+        // same text, so they stay visibly separate.
+        (Some(prev), next) if prev == next && !matches!(next, Value::Bus(_)) => level_glyph(next),
+        // Anything involving unknown or a bus.
+        _ => '╳',
+    }
+}
+
+/// Draws one row per signal. A signal ends where its last segment ends.
+/// Returns the next free row.
+fn render_signals(
+    cursor: usize,
+    signals: &[Signal],
+    clock: &Clock,
+    gutter: usize,
+    canvas: &mut Canvas,
+) -> usize {
+    let cycle_cols = 2 * clock.columns_per_phase();
+    let mut row = cursor;
+
+    for signal in signals {
+        canvas.text(row, 0, &signal.name);
+
+        let mut start = 0;
+        let mut previous: Option<&Value> = None;
+
+        for segment in &signal.segments {
+            let end = start + segment.cycles;
+            let left = gutter + start * cycle_cols;
+            let right = gutter + end * cycle_cols;
+
+            for col in left + 1..right {
+                canvas.put(row, col, level_glyph(&segment.value));
+            }
+            canvas.put(row, left, boundary_glyph(previous, &segment.value));
+
+            if let Value::Bus(text) = &segment.value {
+                draw_label(canvas, row, left, right, text);
+            }
+
+            previous = Some(&segment.value);
+            start = end;
+        }
+
+        row += 1;
+    }
+
+    row
 }
