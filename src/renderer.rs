@@ -16,28 +16,9 @@ impl Canvas {
     pub fn render(model: &Model) -> Self {
         let mut canvas = Self::default();
         let mut cursor = 0;
-        cursor = render_regions(
-            cursor,
-            &model.regions,
-            model.cycles(),
-            &model.clock,
-            model.gutter(),
-            &mut canvas,
-        );
-        cursor = render_clk(
-            cursor,
-            &model.clock,
-            model.cycles(),
-            model.gutter(),
-            &mut canvas,
-        );
-        cursor = render_signals(
-            cursor,
-            &model.signals,
-            &model.clock,
-            model.gutter(),
-            &mut canvas,
-        );
+        cursor = render_regions(cursor, &model, &mut canvas);
+        cursor = render_clk(cursor, &model, &mut canvas);
+        cursor = render_signals(cursor, &model, &mut canvas);
         cursor = render_notes(cursor + 1, &model.notes, &mut canvas);
         _ = cursor;
         canvas
@@ -99,13 +80,11 @@ fn edge_glyphs(style: ClockStyle, rising: bool) -> (char, char) {
 
 /// Draws the clock on two rows starting at `cursor`, for `cycles` cycles.
 /// Returns the next free row.
-pub fn render_clk(
-    cursor: usize,
-    clock: &Clock,
-    cycles: usize,
-    gutter: usize,
-    canvas: &mut Canvas,
-) -> usize {
+pub fn render_clk(cursor: usize, model: &Model, canvas: &mut Canvas) -> usize {
+    let gutter = model.gutter();
+    let cycles = model.cycles();
+    let clock = &model.clock;
+
     if !clock.visible {
         return cursor;
     }
@@ -199,14 +178,12 @@ fn render_notes(cursor: usize, notes: &[Note], canvas: &mut Canvas) -> usize {
 }
 
 /// Draws the region boundaries on one row at `cursor`. Returns the next free row.
-fn render_regions(
-    cursor: usize,
-    regions: &[Region],
-    total_cycles: usize,
-    clock: &Clock,
-    gutter: usize,
-    canvas: &mut Canvas,
-) -> usize {
+fn render_regions(cursor: usize, model: &Model, canvas: &mut Canvas) -> usize {
+    let gutter = model.gutter();
+    let total_cycles = model.cycles();
+    let regions = &model.regions;
+    let clock = &model.clock;
+
     if regions.is_empty() {
         return cursor;
     }
@@ -283,24 +260,31 @@ fn boundary_glyph(previous: Option<&Value>, next: &Value) -> char {
 
 /// Draws one row per signal. A signal ends where its last segment ends.
 /// Returns the next free row.
-fn render_signals(
-    cursor: usize,
-    signals: &[Signal],
-    clock: &Clock,
-    gutter: usize,
-    canvas: &mut Canvas,
-) -> usize {
+fn render_signals(cursor: usize, model: &Model, canvas: &mut Canvas) -> usize {
+    let gutter = model.gutter();
+    let total_cycles = model.cycles();
+    let clock = &model.clock;
+    let signals = &model.signals;
+    let regions = &model.regions;
+
     let cycle_cols = 2 * clock.columns_per_phase();
     let mut row = cursor;
 
     for signal in signals {
+        // Top delimiters
+        if signal.top_delim {
+            render_delimiters(row, regions, total_cycles, clock, gutter, canvas);
+            row += 1;
+        }
+
         canvas.text(row, 0, &signal.name);
 
         let mut start = 0;
+        let mut end = 0;
         let mut previous: Option<&Value> = None;
 
         for segment in &signal.segments {
-            let end = start + segment.cycles;
+            end = start + segment.cycles;
             let left = gutter + start * cycle_cols;
             let right = gutter + end * cycle_cols;
 
@@ -317,8 +301,53 @@ fn render_signals(
             start = end;
         }
 
+        // Signals before and after the diagram are unknown, draw trasition at the boundaries
+        canvas.put(row, gutter, '╳');
+        canvas.put(row, gutter + end * cycle_cols, '╳');
+
+        // Draw clock tail
+        if clock.tail {
+            canvas.text(row, gutter + cycle_cols * total_cycles + 1, "···");
+        }
+
+        // Bottom delimiters
+        if signal.bot_delim {
+            row += 1;
+            render_delimiters(row, regions, total_cycles, clock, gutter, canvas);
+        }
+
         row += 1;
     }
 
     row
+}
+
+fn render_delimiters(
+    cursor: usize,
+    regions: &[Region],
+    total_cycles: usize,
+    clock: &Clock,
+    gutter: usize,
+    canvas: &mut Canvas,
+) {
+    if regions.is_empty() {
+        return;
+    }
+
+    let cycle_cols = 2 * clock.columns_per_phase();
+    let mut start = 0;
+
+    for region in regions.iter() {
+        let end = match region.duration {
+            Some(duration) => start + duration,
+            None => total_cycles.max(start),
+        };
+        let pos = gutter + start * cycle_cols;
+
+        canvas.put(cursor, pos, '╎');
+
+        start = end;
+    }
+
+    canvas.put(cursor, gutter + start * cycle_cols, '╎');
 }

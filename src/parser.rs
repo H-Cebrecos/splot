@@ -150,9 +150,21 @@ fn parse_signal(line: &str) -> Option<Signal> {
         return None;
     }
 
+    let mut toks = rest.split_whitespace().peekable();
+    let top_div = matches!(toks.peek(), Some(&"t"));
+    if top_div {
+        toks.next();
+    }
+    let bot_div = matches!(toks.peek(), Some(&"b"));
+    if bot_div {
+        toks.next();
+    }
+
     Some(Signal {
         name: name.to_string(),
         segments: parse_segments(rest),
+        top_delim: top_div,
+        bot_delim: bot_div,
     })
 }
 

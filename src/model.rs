@@ -108,6 +108,8 @@ pub struct Segment {
 pub struct Signal {
     pub name: String,
     pub segments: Vec<Segment>,
+    pub top_delim: bool,
+    pub bot_delim: bool,
 }
 
 impl Signal {
