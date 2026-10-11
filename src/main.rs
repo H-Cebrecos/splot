@@ -1,6 +1,6 @@
 const TEXT: &str = r#"
     clk: 2 ...
-    regions:  start:2 | handshake : 3 | transfer:1 | end:
+    regions:  start:2 | handshake : 3 | transfer:2+ | end:
     ctrl: t b 101.0x10
     data: b x.[3:00h][FFh]x.
     note a : some some information about the signal

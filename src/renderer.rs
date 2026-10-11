@@ -65,6 +65,28 @@ impl fmt::Display for Canvas {
     }
 }
 
+/// Returns which cycles have stretching
+fn stretched_cycles(model: &Model) -> Vec<usize> {
+    let mut stretch = Vec::<usize>::new();
+    let mut start = 0;
+    for reg in &model.regions {
+        if let Some(dur) = reg.duration {
+            start += dur;
+            if reg.stretch {
+                stretch.push(start - 1);
+            }
+        }
+    }
+    stretch
+}
+
+/// Columns of a stretched cycle that hold the break marks: the two centre
+/// columns of the cycle. It needs a plateau column next to the middle edge,
+/// so a clock with width 0 never shows a break.
+fn is_stretch_col(offset: usize, phase_cols: usize) -> bool {
+    phase_cols >= 2 && (offset == phase_cols - 1 || offset == phase_cols)
+}
+
 /// Glyphs LUT for the top and bottom row of an edge column. An edge is one
 /// vertical stroke joining the high level and the low level.
 fn edge_glyphs(style: ClockStyle, rising: bool) -> (char, char) {
@@ -80,10 +102,12 @@ fn edge_glyphs(style: ClockStyle, rising: bool) -> (char, char) {
 
 /// Draws the clock on two rows starting at `cursor`, for `cycles` cycles.
 /// Returns the next free row.
-pub fn render_clk(cursor: usize, model: &Model, canvas: &mut Canvas) -> usize {
+fn render_clk(cursor: usize, model: &Model, canvas: &mut Canvas) -> usize {
     let gutter = model.gutter();
     let cycles = model.cycles();
     let clock = &model.clock;
+
+    let stretch = stretched_cycles(model);
 
     if !clock.visible {
         return cursor;
@@ -117,6 +141,16 @@ pub fn render_clk(cursor: usize, model: &Model, canvas: &mut Canvas) -> usize {
         let level_row = if rising { cursor } else { cursor + 1 };
         for i in 1..phase_cols {
             canvas.put(level_row, col + i, '─');
+        }
+    }
+
+    // Stretched cycles: dots on both rows, replacing the middle edge and its neighbours.
+    let cycle_cols = 2 * phase_cols;
+    for &cycle in &stretch {
+        for offset in (0..cycle_cols).filter(|&o| is_stretch_col(o, phase_cols)) {
+            let col = gutter + cycle * cycle_cols + offset;
+            canvas.put(cursor, col, '⌠');
+            canvas.put(cursor + 1, col, '⌡');
         }
     }
 
@@ -267,6 +301,8 @@ fn render_signals(cursor: usize, model: &Model, canvas: &mut Canvas) -> usize {
     let signals = &model.signals;
     let regions = &model.regions;
 
+    let stretch = stretched_cycles(model);
+
     let cycle_cols = 2 * clock.columns_per_phase();
     let mut row = cursor;
 
@@ -289,7 +325,18 @@ fn render_signals(cursor: usize, model: &Model, canvas: &mut Canvas) -> usize {
             let right = gutter + end * cycle_cols;
 
             for col in left + 1..right {
-                canvas.put(row, col, level_glyph(&segment.value));
+                // Which cycle this column is in, and how far into it.
+                let cycle = (col - gutter) / cycle_cols;
+                let offset = (col - gutter) % cycle_cols;
+
+                // The two centre columns of a stretched cycle hold the break marks.
+                let stretched = stretch.contains(&cycle) && is_stretch_col(offset, cycle_cols / 2);
+                let glyph = if stretched {
+                    '·'
+                } else {
+                    level_glyph(&segment.value)
+                };
+                canvas.put(row, col, glyph);
             }
             canvas.put(row, left, boundary_glyph(previous, &segment.value));
 
