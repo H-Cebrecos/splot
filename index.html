@@ -481,6 +481,7 @@
             <a href="#playground">Playground</a>
             <a href="#syntax">Syntax</a>
             <a href="#examples">Examples</a>
+            <a href="https://github.com/H-Cebrecos/splot">GitHub</a>
             <button id="theme" type="button" aria-label="Toggle light and dark theme"
                 title="Toggle light and dark theme">
                 ◐
@@ -509,10 +510,14 @@
     <section id="syntax" class="page">
         <h2>Syntax</h2>
         <p class="lead">
-            Diagrams are described in a very simple language, which the tool renders using special unicode characters.
-            For the diagrams to look nice the font must be monospaced and support box-drawing characters. The default font used in this site is Fira Code.
-            But in genral, most modern monospace fonts work correcly, older ones like consolas will likely render the special characters with non-monospaced widths.
-            You can try looking for a nerd font version of you favourite font. 
+            Diagrams are described in a very simple language, which the tool
+            renders using special unicode characters. For the diagrams to
+            look nice the font must be monospaced and support box-drawing
+            characters. The default font used in this site is Fira Code. But
+            in genral, most modern monospace fonts work correcly, older ones
+            like consolas will likely render the special characters with
+            non-monospaced widths. You can try looking for a nerd font
+            version of you favourite font.
         </p>
 
         <h3 id="cheatsheet">Cheat sheet</h3>
@@ -552,7 +557,9 @@ note id: text               footnote under the diagram</pre>
                 <td>Comment.</td>
             </tr>
             <tr>
-                <td><code>clk: [numbers] [style] [edge] [width] [...]</code></td>
+                <td>
+                    <code>clk: [numbers] [style] [edge] [width] [...]</code>
+                </td>
                 <td>The clock.</td>
             </tr>
             <tr>
@@ -599,8 +606,8 @@ note id: text               footnote under the diagram</pre>
 
         <h3 id="clock">Clock</h3>
         <p>
-            <code>clk: [#] [style] [edge] [width] [...]</code>. Every field is
-            optional, but keep them in this order. The default is
+            <code>clk: [#] [style] [edge] [width] [...]</code>. Every field
+            is optional, but keep them in this order. The default is
             <code>clk: square rising 0</code>.
         </p>
         <table>
@@ -611,7 +618,8 @@ note id: text               footnote under the diagram</pre>
             <tr>
                 <td><code>#</code></td>
                 <td>
-                    If present, the clock is drawn with a number on every cycle.
+                    If present, the clock is drawn with a number on every
+                    cycle.
                 </td>
             </tr>
             <tr>
@@ -709,8 +717,8 @@ d: 0 1 0 1</pre>
         </table>
         <p>
             A label needs its length plus two columns (the
-            <code>|</code> and <code>|</code> around it). A label that
-            does not fit is shown as <code>*</code> for now.
+            <code>|</code> and <code>|</code> around it). A label that does
+            not fit is shown as <code>*</code> for now.
         </p>
 
         <div class="demo">
@@ -726,8 +734,8 @@ d: 0 0 1 1 1 1 0 0</pre>
             A trailing <code>+</code> on a region (<code>wait:2+</code>)
             marks its last cycle as stretched: time is skipped there. The
             middle of that cycle shows a break on every row. It looks like
-            split on the clock and <code>···</code> on signals,
-            bus labels included.
+            split on the clock and <code>···</code> on signals, bus labels
+            included.
         </p>
         <p>
             The stretched cycle still counts as one cycle, so nothing
@@ -789,7 +797,6 @@ data: x [3: ok] x x</pre>
             </tr>
         </table>
 
-
         <p>
             Signal names sit in a column to the left of the waveforms. The
             column is as wide as the longest name, or as <code>clk</code>
@@ -812,7 +819,7 @@ bus: x x [3: 5Ah] [2: B2h] x</pre>
             to draw a dotted row <code>╎</code> above or below that signal.
             The dots sit under every region boundary, so this needs a
             <code>regions:</code> line, and they keep the signal aligned
-            with the regions above it.  <code>t</code> comes before
+            with the regions above it. <code>t</code> comes before
             <code>b</code>, write them in that order.
         </p>
         <p>
@@ -820,8 +827,8 @@ bus: x x [3: 5Ah] [2: B2h] x</pre>
             for a row above it, they share a single row.
         </p>
         <p>
-            If no regions exist this simply create the space, so it can still be useful to separate signals and
-            create groups.
+            If no regions exist this simply create the space, so it can
+            still be useful to separate signals and create groups.
         </p>
 
         <div class="demo">
@@ -927,7 +934,11 @@ note a: Notes wrap to the width of the diagram, so long text still looks good :)
                 Annotations that point at a region name instead of a cycle
                 number, and choosing the label direction by hand.
             </li>
-            <li>Sizing a hidden clock, so that you can adjust width on a clockless diagram, you will need to delete the clock line manually.</li>
+            <li>
+                Sizing a hidden clock, so that you can adjust width on a
+                clockless diagram, you will need to delete the clock line
+                manually.
+            </li>
         </ul>
     </section>
 
@@ -939,14 +950,17 @@ note a: Notes wrap to the width of the diagram, so long text still looks good :)
             playground and tweak it.
         </p>
         <p class="lead">
-          The examples below are very basic, and not good examples of real world usage, once I get to use this tool more I hope to add better ones.
-          Feel free to submit your own examples as a pull request.   
+            The examples below are very basic, and not good examples of real
+            world usage, once I get to use this tool more I hope to add
+            better ones. Feel free to submit your own examples as a pull
+            request.
         </p>
         <div id="example-list" class="examples"></div>
     </section>
 
     <footer>
-        splot is made with webassembly so all code runs entirely in your browser.
+        splot is made with webassembly so all code runs entirely in your
+        browser.
     </footer>
 
     <!-- One card per entry of EXAMPLES; filled in by the script below. -->
