@@ -2,6 +2,8 @@
 
 An application to draw timing diagrams as text, mostly for HDL documentation comments
 
+https://h-cebrecos.github.io/splot/
+
 a made up example of how the diagrams are rendered
 
 ```
