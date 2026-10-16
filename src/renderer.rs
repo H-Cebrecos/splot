@@ -47,6 +47,16 @@ impl Canvas {
         }
     }
 
+    /// True if every cell of `cols` on `row` is still empty (unwritten or a space).
+    fn is_free(&self, row: usize, cols: std::ops::Range<usize>) -> bool {
+        cols.into_iter().all(|c| {
+            self.rows
+                .get(row)
+                .and_then(|line| line.get(c))
+                .map_or(true, |&ch| ch == ' ')
+        })
+    }
+
     /// Width of the widest row. Rows only ever end on a drawn glyph, so this
     /// is the column just past the rightmost thing on the canvas.
     fn width(&self) -> usize {
@@ -106,11 +116,16 @@ fn render_clk(cursor: usize, model: &Model, canvas: &mut Canvas) -> usize {
     let gutter = model.gutter();
     let cycles = model.cycles();
     let clock = &model.clock;
+    let mut cursor = cursor;
 
     let stretch = stretched_cycles(model);
 
     if !clock.visible {
         return cursor;
+    }
+
+    if clock.num {
+        cursor = cursor + 1;
     }
 
     // Draw the label in the line where the clock starts
@@ -151,6 +166,16 @@ fn render_clk(cursor: usize, model: &Model, canvas: &mut Canvas) -> usize {
             let col = gutter + cycle * cycle_cols + offset;
             canvas.put(cursor, col, '⌠');
             canvas.put(cursor + 1, col, '⌡');
+        }
+    }
+
+    if clock.num {
+        for cycle in 0..=cycles {
+            let col = gutter + cycle * cycle_cols;
+            // A label wider than one column continues into the columns to its right
+            for (offset, digit) in cycle.to_string().chars().enumerate() {
+                canvas.put(cursor - 1, col + offset, digit);
+            }
         }
     }
 
@@ -305,13 +330,17 @@ fn render_signals(cursor: usize, model: &Model, canvas: &mut Canvas) -> usize {
 
     let cycle_cols = 2 * clock.columns_per_phase();
     let mut row = cursor;
+    // The previous signal asked for a delimiter row below it.
+    let mut bot_pending = false;
 
-    for signal in signals {
-        // Top delimiters
-        if signal.top_delim {
+    for (i, signal) in signals.iter().enumerate() {
+        let delim = bot_pending || signal.top_delim;
+        if delim {
             render_delimiters(row, regions, total_cycles, clock, gutter, canvas);
-            row += 1;
         }
+        // Annotations start on the delimiter row. A gap with only a delimiter
+        // still takes one row, and one with neither takes none.
+        row = render_annotations(row, i, model, canvas).max(row + delim as usize);
 
         canvas.text(row, 0, &signal.name);
 
@@ -325,18 +354,7 @@ fn render_signals(cursor: usize, model: &Model, canvas: &mut Canvas) -> usize {
             let right = gutter + end * cycle_cols;
 
             for col in left + 1..right {
-                // Which cycle this column is in, and how far into it.
-                let cycle = (col - gutter) / cycle_cols;
-                let offset = (col - gutter) % cycle_cols;
-
-                // The two centre columns of a stretched cycle hold the break marks.
-                let stretched = stretch.contains(&cycle) && is_stretch_col(offset, cycle_cols / 2);
-                let glyph = if stretched {
-                    '·'
-                } else {
-                    level_glyph(&segment.value)
-                };
-                canvas.put(row, col, glyph);
+                canvas.put(row, col, level_glyph(&segment.value));
             }
             canvas.put(row, left, boundary_glyph(previous, &segment.value));
 
@@ -346,6 +364,16 @@ fn render_signals(cursor: usize, model: &Model, canvas: &mut Canvas) -> usize {
 
             previous = Some(&segment.value);
             start = end;
+        }
+        // Stretched cycles show three dots whatever the value is, bus labels included.
+        // Only cycles this signal covers, and only when a phase has two columns or more.
+        let phase_cols = cycle_cols / 2;
+        if phase_cols >= 2 {
+            for &cycle in stretch.iter().filter(|&&c| c < end) {
+                // The middle of the cycle and one column on each side.
+                let middle = gutter + cycle * cycle_cols + phase_cols;
+                canvas.text(row, middle - 1, "···");
+            }
         }
 
         // Signals before and after the diagram are unknown, draw trasition at the boundaries
@@ -357,14 +385,15 @@ fn render_signals(cursor: usize, model: &Model, canvas: &mut Canvas) -> usize {
             canvas.text(row, gutter + cycle_cols * total_cycles + 1, "···");
         }
 
-        // Bottom delimiters
-        if signal.bot_delim {
-            row += 1;
-            render_delimiters(row, regions, total_cycles, clock, gutter, canvas);
-        }
-
         row += 1;
+        bot_pending = signal.bot_delim;
     }
+
+    // The gap after the last signal.
+    if bot_pending {
+        render_delimiters(row, regions, total_cycles, clock, gutter, canvas);
+    }
+    row = render_annotations(row, signals.len(), model, canvas).max(row + bot_pending as usize);
 
     row
 }
@@ -397,4 +426,48 @@ fn render_delimiters(
     }
 
     canvas.put(cursor, gutter + start * cycle_cols, '╎');
+}
+
+/// Draws every annotation sitting in the gap before signal `index`, one row each.
+/// Returns the next free row.
+fn render_annotations(row: usize, index: usize, model: &Model, canvas: &mut Canvas) -> usize {
+    let gutter = model.gutter();
+    let cycle_cols = 2 * model.clock.columns_per_phase();
+    // Column of the closing edge: labels must not cross it.
+    let end = gutter + model.cycles() * cycle_cols;
+    let mut any = false;
+
+    for annotation in model.annotations.iter().filter(|a| a.row == index) {
+        // Corner for a label growing to the right, and for one growing to the left.
+        let (corner_right, corner_left) = match annotation.pos {
+            Position::Above => ('╭', '╮'),
+            Position::Below => ('╰', '╯'),
+        };
+
+        for marker in &annotation.marks {
+            let col = gutter + marker.cycle * cycle_cols;
+            let width = marker.text.chars().count() + 1; // text plus `╴` or `╶`
+
+            let right = col + 1..col + 1 + width;
+            let left = col.saturating_sub(width)..col;
+
+            // Right unless it would cross the end of the diagram or hit something
+            // already drawn, and only if the left side is actually free.
+            let right_blocked = right.end > end || !canvas.is_free(row, right);
+            let go_left =
+                right_blocked && left.start >= gutter && canvas.is_free(row, left.clone());
+
+            if go_left {
+                canvas.text(row, left.start, &format!("{}╶", marker.text));
+                canvas.put(row, col, corner_left);
+            } else {
+                canvas.put(row, col, corner_right);
+                canvas.text(row, col + 1, &format!("╴{}", marker.text));
+            }
+        }
+        any = true;
+    }
+
+    // Every annotation in the gap shares one row.
+    row + any as usize
 }

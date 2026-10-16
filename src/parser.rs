@@ -9,6 +9,12 @@ pub fn parse(src: &str) -> Model {
             continue;
         }
 
+        // try to parse an annotation
+        if let Some(annotation) = parse_annotation(line, model.signals.len()) {
+            model.annotations.push(annotation);
+            continue;
+        }
+
         // The keyword is the first word, whether or not a space precedes the
         // colon (`clk: 2` and `clk : 2`). A quoted name keeps its quotes, so it
         // never equals a keyword and falls through to the signal case.
@@ -48,6 +54,14 @@ fn parse_clk(line: &str) -> Clock {
     };
 
     let mut toks = args.split_whitespace().peekable();
+    let num = match toks.peek() {
+        Some(&"#") => {
+            toks.next();
+            true
+        }
+        _ => false,
+    };
+
     let style = match toks.peek() {
         Some(&"square") => {
             toks.next();
@@ -101,6 +115,7 @@ fn parse_clk(line: &str) -> Clock {
         edge,
         width,
         tail,
+        num,
     }
 }
 
@@ -204,6 +219,41 @@ fn parse_segments(signal: &str) -> Vec<Segment> {
     }
 
     segments
+}
+
+fn parse_annotation(line: &str, row: usize) -> Option<Annotation> {
+    let pos = match line.chars().next()? {
+        '^' => Position::Below,
+        'v' => Position::Above,
+        _ => return None,
+    };
+    let rest = line[1..].trim_start();
+    if !rest.starts_with('@') {
+        return None;
+    }
+
+    // Each `@` starts one marker; skip(1) drops the empty piece before the first `@`.
+    let marks: Vec<Marker> = rest.split('@').skip(1).filter_map(parse_marker).collect();
+
+    // A line with no valid marker would otherwise reserve an empty row.
+    (!marks.is_empty()).then_some(Annotation { row, pos, marks })
+}
+
+/// Parses one `@` piece of an annotation line, e.g. `4 "a" `.
+/// `None` if the cycle isn't a number or the text is missing or empty.
+fn parse_marker(piece: &str) -> Option<Marker> {
+    let (cycle, rest) = piece.trim().split_once(char::is_whitespace)?;
+    let cycle = cycle.parse().ok()?;
+
+    // Text is what follows the first quote, up to the next one. An unterminated
+    // quote runs to the end of the piece, so a half-typed label still shows.
+    let (_, quoted) = rest.split_once('"')?;
+    let text = quoted.split('"').next()?.trim();
+
+    (!text.is_empty()).then(|| Marker {
+        cycle,
+        text: text.to_string(),
+    })
 }
 
 /// Parses the inside of `[...]`: an optional `N:` duration, then the text.

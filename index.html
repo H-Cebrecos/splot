@@ -1,0 +1,1112 @@
+<!doctype html>
+<!--
+  splot: single-file site. To maintain it you only ever need to touch:
+    1. the <section id="syntax"> block   (plain HTML; every .demo is rendered live by the engine)
+    2. the EXAMPLES list in the <script>  (add an entry, get a card)
+  Font: Fira Code, loaded from Google Fonts in the <head>.
+-->
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>splot: text timing diagrams</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400&display=swap" />
+    <script>
+        // Runs before first paint so a saved theme never flashes the other one.
+        try {
+            const saved = localStorage.getItem("theme");
+            if (saved) document.documentElement.dataset.theme = saved;
+        } catch { }
+    </script>
+    <style>
+        /* ---------- Theme ---------- */
+        /* Every colour is light-dark(light value, dark value), which picks
+               one according to color-scheme. By default that follows the
+               system; the toggle pins it through the data-theme attribute. */
+        :root {
+            color-scheme: light dark;
+
+            --bg: light-dark(#faf6f0, #15120f);
+            --surface: light-dark(#f3ece2, #1c1815);
+            --surface-hover: light-dark(#ebe2d5, #26201b);
+            --border: light-dark(#dfd4c5, #342b24);
+
+            --text: light-dark(#4a4137, #c2b8ac);
+            --strong: light-dark(#2a231c, #efe5d8);
+            --muted: light-dark(#6f6457, #9b9084);
+            --faint: light-dark(#a39787, #5a5047);
+            --accent: light-dark(#a94e14, #e9a766);
+
+            --mono:
+                "Fira Code", "JetBrains Mono", ui-monospace,
+                "DejaVu Sans Mono", Menlo, Consolas, monospace;
+        }
+
+        :root[data-theme="light"] {
+            color-scheme: light;
+        }
+
+        :root[data-theme="dark"] {
+            color-scheme: dark;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+            scroll-padding-top: 64px;
+        }
+
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--text);
+            font:
+                15px/1.65 system-ui,
+                -apple-system,
+                "Segoe UI",
+                sans-serif;
+        }
+
+        a {
+            color: var(--accent);
+        }
+
+        /* ---------- Header ---------- */
+        header {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+
+            height: 52px;
+            padding: 0 24px;
+
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+
+            background: var(--bg);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .title {
+            display: flex;
+            align-items: center;
+        }
+
+        .brand {
+            display: inline-flex;
+            flex-direction: column;
+            gap: 1px;
+        }
+
+        .logo {
+            color: var(--strong);
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            line-height: 1.2;
+        }
+
+        /* A square wave under the logo. The shape is a one-period tile used
+               as a mask, so the accent colour (and the theme) still decide how
+               it looks. Sliding the mask by exactly one period makes the loop
+               seamless; steps() makes it tick instead of glide. */
+        .wave {
+            height: 6px;
+            background: var(--accent);
+            mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='6' viewBox='0 0 16 6'%3E%3Cpath d='M0 5H4V1H12V5H16' fill='none' stroke='black' stroke-width='1.5'/%3E%3C/svg%3E") repeat-x 0 0 / 16px 6px;
+            animation: tick 1.6s steps(4) infinite;
+        }
+
+        @keyframes tick {
+            to {
+                mask-position: -16px 0;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .wave {
+                animation: none;
+            }
+        }
+
+        .tagline {
+            margin-left: 10px;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        nav {
+            display: flex;
+            align-items: center;
+        }
+
+        nav a {
+            margin-left: 22px;
+            color: var(--muted);
+            font-size: 14px;
+            text-decoration: none;
+        }
+
+        nav a:hover {
+            color: var(--text);
+        }
+
+        #theme {
+            margin-left: 18px;
+        }
+
+        /* ---------- Playground ---------- */
+        .app {
+            display: grid;
+            grid-template-columns: minmax(280px, 1fr) minmax(400px, 1.6fr);
+            height: clamp(420px, 70vh, 720px);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .pane {
+            min-width: 0;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .pane+.pane {
+            border-left: 1px solid var(--border);
+        }
+
+        .toolbar {
+            height: 40px;
+            flex-shrink: 0;
+            padding: 0 16px;
+
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+
+            border-bottom: 1px solid var(--border);
+            background: var(--surface);
+
+            color: var(--muted);
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        /* Shared by every block of diagram text. line-height: normal lets the
+               font's own metrics join box-drawing characters between rows; a
+               taller line-height leaves visible gaps in the lines. */
+        textarea,
+        pre {
+            font-family: var(--mono);
+            font-size: 14px;
+            line-height: normal;
+            font-variant-ligatures: none;
+            tab-size: 4;
+        }
+
+        #source,
+        #output {
+            flex: 1;
+            min-height: 0;
+            width: 100%;
+            margin: 0;
+            padding: 18px 20px;
+
+            border: 0;
+            outline: 0;
+            overflow: auto;
+
+            background: transparent;
+            color: var(--text);
+            white-space: pre;
+        }
+
+        #source {
+            resize: none;
+        }
+
+        #source::placeholder {
+            color: var(--faint);
+        }
+
+        #source:focus {
+            box-shadow: inset 2px 0 0 var(--accent);
+        }
+
+        button {
+            padding: 4px 10px;
+
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: transparent;
+            color: var(--muted);
+
+            font: inherit;
+            font-size: 12px;
+            letter-spacing: normal;
+            text-transform: none;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: var(--surface-hover);
+            color: var(--text);
+        }
+
+        button:focus-visible {
+            outline: 1px solid var(--accent);
+            outline-offset: 2px;
+        }
+
+        /* ---------- Documentation pages ---------- */
+        .page {
+            max-width: 920px;
+            margin: 0 auto;
+            padding: 56px 24px 24px;
+        }
+
+        h2 {
+            margin: 0 0 8px;
+            color: var(--strong);
+            font-size: 26px;
+        }
+
+        h3 {
+            margin: 36px 0 8px;
+            color: var(--strong);
+            font-size: 17px;
+        }
+
+        .lead {
+            margin: 0 0 8px;
+            color: var(--muted);
+        }
+
+        code {
+            padding: 1px 5px;
+            border-radius: 3px;
+            background: var(--surface);
+            font-family: var(--mono);
+            font-size: 0.9em;
+            font-variant-ligatures: none;
+        }
+
+        table {
+            width: 100%;
+            margin: 12px 0;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        th,
+        td {
+            padding: 7px 10px;
+            border-bottom: 1px solid var(--border);
+            text-align: left;
+            vertical-align: top;
+        }
+
+        th {
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+
+        td:first-child {
+            white-space: nowrap;
+        }
+
+        /* A documentation demo: source on the left, live result on the right. */
+        .demo {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
+            margin: 16px 0;
+
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--surface);
+            overflow: hidden;
+        }
+
+        .demo pre {
+            margin: 0;
+            padding: 14px 16px;
+            overflow-x: auto;
+            font-size: 13px;
+        }
+
+        .demo .src {
+            border-right: 1px solid var(--border);
+            color: var(--muted);
+        }
+
+        /* ---------- Syntax page extras ---------- */
+        .sheet {
+            margin: 16px 0;
+            padding: 14px 16px;
+            overflow-x: auto;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--surface);
+            font-size: 13px;
+        }
+
+        .toc {
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        .toc a {
+            margin-right: 14px;
+            color: var(--muted);
+        }
+
+        .page ul {
+            padding-left: 22px;
+        }
+
+        .page li {
+            margin: 6px 0;
+        }
+
+        /* ---------- Examples ---------- */
+        .examples {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+            gap: 16px;
+            margin-top: 20px;
+        }
+
+        .card {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--surface);
+            overflow: hidden;
+        }
+
+        .card h3 {
+            margin: 0;
+            padding: 14px 16px 0;
+        }
+
+        .card p {
+            margin: 4px 0 0;
+            padding: 0 16px;
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        .card pre {
+            flex: 1;
+            margin: 12px 0 0;
+            padding: 14px 16px;
+            overflow-x: auto;
+            font-size: 13px;
+            border-top: 1px solid var(--border);
+        }
+
+        .actions {
+            padding: 10px 16px;
+            display: flex;
+            gap: 8px;
+            border-top: 1px solid var(--border);
+        }
+
+        .empty {
+            color: var(--muted);
+        }
+
+        footer {
+            max-width: 920px;
+            margin: 0 auto;
+            padding: 40px 24px 56px;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        @media (max-width: 800px) {
+            .app {
+                grid-template-columns: 1fr;
+                grid-template-rows: 1fr 1fr;
+                height: 90vh;
+            }
+
+            .pane+.pane {
+                border-left: 0;
+                border-top: 1px solid var(--border);
+            }
+
+            .demo {
+                grid-template-columns: 1fr;
+            }
+
+            .demo .src {
+                border-right: 0;
+                border-bottom: 1px solid var(--border);
+            }
+
+            .examples {
+                grid-template-columns: 1fr;
+            }
+
+            .tagline {
+                display: none;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <div class="title">
+            <span class="brand">
+                <span class="logo">splot</span>
+                <span class="wave" aria-hidden="true"></span>
+            </span>
+            <span class="tagline">a tool for creating text timing diagrams</span>
+        </div>
+        <nav>
+            <a href="#playground">Playground</a>
+            <a href="#syntax">Syntax</a>
+            <a href="#examples">Examples</a>
+            <button id="theme" type="button" aria-label="Toggle light and dark theme"
+                title="Toggle light and dark theme">
+                ◐
+            </button>
+        </nav>
+    </header>
+
+    <!-- ===================== Playground ===================== -->
+    <main id="playground" class="app">
+        <section class="pane">
+            <div class="toolbar">Source</div>
+            <textarea id="source" spellcheck="false" wrap="off" placeholder="Describe your timing diagram..."
+                autofocus></textarea>
+        </section>
+
+        <section class="pane">
+            <div class="toolbar">
+                <span>Preview</span>
+                <button id="copy" type="button">Copy</button>
+            </div>
+            <pre id="output"></pre>
+        </section>
+    </main>
+
+    <!-- ======================= Syntax ======================= -->
+    <section id="syntax" class="page">
+        <h2>Syntax</h2>
+        <p class="lead">
+            Diagrams are described in a very simple language, which the tool renders using special unicode characters.
+            For the diagrams to look nice the font must be monospaced and support box-drawing characters. The default font used in this site is Fira Code.
+            But in genral, most modern monospace fonts work correcly, older ones like consolas will likely render the special characters with non-monospaced widths.
+            You can try looking for a nerd font version of you favourite font. 
+        </p>
+
+        <h3 id="cheatsheet">Cheat sheet</h3>
+        <pre class="sheet">
+# comment
+clk: [#] [square|analog|rounded] [rising|falling] [width] [...]
+regions: name:cycles | name:cycles+ | _:cycles | name:
+name: [t] [b] tokens        tokens:  0  1  x  .  [text]  [N: text]
+v @N "text" @N "text"       annotation row, labels point down at the signal below
+^ @N "text" @N "text"       annotation row, labels point up at the signal above
+note id: text               footnote under the diagram</pre>
+        <p class="toc">
+            <a href="#overview">Overview</a>
+            <a href="#clock">Clock</a>
+            <a href="#regions">Regions</a>
+            <a href="#stretching">Stretching</a>
+            <a href="#signals">Signals</a>
+            <a href="#delimiters">Delimiters</a>
+            <a href="#annotations">Annotations</a>
+            <a href="#notes">Notes</a>
+            <a href="#lenient">Parsing rules</a>
+        </p>
+
+        <h3 id="overview">Overview</h3>
+        <p>
+            One line per element. The diagram is always drawn in the same
+            order, top to bottom: regions, clock, signals, notes.
+        </p>
+
+        <table>
+            <tr>
+                <th>Line</th>
+                <th>Meaning</th>
+            </tr>
+            <tr>
+                <td><code># text</code></td>
+                <td>Comment.</td>
+            </tr>
+            <tr>
+                <td><code>clk: [numbers] [style] [edge] [width] [...]</code></td>
+                <td>The clock.</td>
+            </tr>
+            <tr>
+                <td><code>regions: name:cycles | name:cycles</code></td>
+                <td>Named spans of time above the diagram.</td>
+            </tr>
+            <tr>
+                <td><code>name: [t] [b] tokens</code></td>
+                <td>A signal, with optional dotted delimiter rows.</td>
+            </tr>
+            <tr>
+                <td>
+                    <code>v @N "text"</code> or <code>^ @N "text"</code>
+                </td>
+                <td>Annotations between the signals.</td>
+            </tr>
+            <tr>
+                <td><code>note id: text</code></td>
+                <td>A footnote printed below the diagram.</td>
+            </tr>
+        </table>
+
+        <p>
+            <strong>Order of lines.</strong> The <code>clk:</code> and
+            <code>regions:</code> lines can go anywhere. Signals are drawn
+            in the order written, and annotation lines are drawn in the gap
+            where they are written, so their position among the signal lines
+            matters. Notes are printed in the order written.
+        </p>
+        <p>
+            <strong>Time.</strong> Everything is measured in clock cycles. A
+            cycle is <code>2 × (width + 1)</code> columns wide, where
+            <code>width</code> is the clock width. The diagram is as long as
+            it needs to render the longest signal or the regions.
+        </p>
+        <p>
+            <strong>First words.</strong> A line starting with
+            <code>clk</code>, <code>regions</code> or <code>note</code> is
+            that kind of line. A line starting with <code>^</code> or
+            <code>v</code> followed by <code>@</code> is an annotation.
+            Anything else with a colon is a signal, so those three words
+            cannot be used as signal names.
+        </p>
+
+        <h3 id="clock">Clock</h3>
+        <p>
+            <code>clk: [#] [style] [edge] [width] [...]</code>. Every field is
+            optional, but keep them in this order. The default is
+            <code>clk: square rising 0</code>.
+        </p>
+        <table>
+            <tr>
+                <th>Field</th>
+                <th>Values</th>
+            </tr>
+            <tr>
+                <td><code>#</code></td>
+                <td>
+                    If present, the clock is drawn with a number on every cycle.
+                </td>
+            </tr>
+            <tr>
+                <td>style</td>
+                <td>
+                    <code>square</code>, <code>analog</code> (one rounded
+                    corner per edge), <code>rounded</code> (all corners
+                    rounded)
+                </td>
+            </tr>
+            <tr>
+                <td>edge</td>
+                <td>
+                    <code>rising</code> or <code>falling</code>: the
+                    transition the clock starts with
+                </td>
+            </tr>
+            <tr>
+                <td>width</td>
+                <td>
+                    <code>0</code> to <code>255</code>: extra columns per
+                    half cycle. It also scales every signal, because they
+                    share the same time axis
+                </td>
+            </tr>
+            <tr>
+                <td><code>...</code></td>
+                <td>
+                    Draw <code>···</code> after the last edge of the clock
+                    and of every signal, to show the waveform continues.
+                </td>
+            </tr>
+        </table>
+        <p>
+            Without a <code>clk:</code> line the clock is not drawn, but the
+            diagram still uses its default width as the time reference.
+            Write <code>clk:</code>, with the colon, to draw it with the
+            defaults.
+        </p>
+
+        <div class="demo">
+            <pre class="src">
+clk: square rising 2
+d: 0 1 0 1</pre>
+            <pre class="out"></pre>
+        </div>
+        <div class="demo">
+            <pre class="src">
+clk: # analog falling 1
+d: 0 1 0 1</pre>
+            <pre class="out"></pre>
+        </div>
+        <div class="demo">
+            <pre class="src">
+clk: rounded 2 ...
+d: 0 1 0 1</pre>
+            <pre class="out"></pre>
+        </div>
+
+        <h3 id="regions">Regions</h3>
+        <p>
+            <code>regions: name:cycles | name:cycles | ...</code>. Each
+            region is a labelled span of time, drawn as a box above the
+            clock. Region lengths add up from the left, starting at cycle 0.
+            Only one <code>regions:</code> line is used; if there are
+            several, the last one wins.
+        </p>
+        <table>
+            <tr>
+                <th>Piece</th>
+                <th>Meaning</th>
+            </tr>
+            <tr>
+                <td><code>name:3</code></td>
+                <td>A region lasting 3 cycles.</td>
+            </tr>
+            <tr>
+                <td><code>_:3</code></td>
+                <td>An unlabelled region.</td>
+            </tr>
+            <tr>
+                <td><code>name:</code></td>
+                <td>
+                    No number: lasts until the end of the diagram. Use it
+                    for the last region.
+                </td>
+            </tr>
+            <tr>
+                <td><code>name:3+</code></td>
+                <td>
+                    A region whose last cycle is stretched, see
+                    <a href="#stretching">Stretching</a>.
+                </td>
+            </tr>
+        </table>
+        <p>
+            A label needs its length plus two columns (the
+            <code>|</code> and <code>|</code> around it). A label that
+            does not fit is shown as <code>*</code> for now.
+        </p>
+
+        <div class="demo">
+            <pre class="src">
+regions: start:2 | transfer:4 | end:
+clk: 2
+d: 0 0 1 1 1 1 0 0</pre>
+            <pre class="out"></pre>
+        </div>
+
+        <h3 id="stretching">Stretching</h3>
+        <p>
+            A trailing <code>+</code> on a region (<code>wait:2+</code>)
+            marks its last cycle as stretched: time is skipped there. The
+            middle of that cycle shows a break on every row. It looks like
+            split on the clock and <code>···</code> on signals,
+            bus labels included.
+        </p>
+        <p>
+            The stretched cycle still counts as one cycle, so nothing
+            shifts.
+        </p>
+
+        <div class="demo">
+            <pre class="src">
+regions: setup:2 | wait:2+ | end:2
+clk: 2
+req: 0 1 1 1 0 0
+data: x [3: ok] x x</pre>
+            <pre class="out"></pre>
+        </div>
+
+        <h3 id="signals">Signals</h3>
+        <p>
+            <code>name: tokens</code>. One token is one cycle; spaces
+            between tokens are ignored. A signal is unknown before its first
+            cycle and after its last one, so it starts and ends with a
+            <code>╳</code>.
+        </p>
+        <table>
+            <tr>
+                <th>Token</th>
+                <th>Meaning</th>
+            </tr>
+            <tr>
+                <td><code>0</code></td>
+                <td>Low.</td>
+            </tr>
+            <tr>
+                <td><code>1</code></td>
+                <td>High.</td>
+            </tr>
+            <tr>
+                <td><code>x</code></td>
+                <td>Unknown or don't care, for one cycle.</td>
+            </tr>
+            <tr>
+                <td><code>.</code></td>
+                <td>
+                    Repeat the previous token for one more cycle, so
+                    <code>x...</code> is four cycles of unknown. A leading
+                    <code>.</code> counts as unknown.
+                </td>
+            </tr>
+            <tr>
+                <td><code>[text]</code></td>
+                <td>A bus value with a label, one cycle long.</td>
+            </tr>
+            <tr>
+                <td><code>[N: text]</code></td>
+                <td>
+                    A bus value lasting <code>N</code> cycles. If what comes
+                    before the colon is not a number, the whole thing is the
+                    label, so <code>[addr:0]</code> works.
+                </td>
+            </tr>
+        </table>
+
+
+        <p>
+            Signal names sit in a column to the left of the waveforms. The
+            column is as wide as the longest name, or as <code>clk</code>
+            when the clock is drawn. A name is everything before the first
+            colon, so do not put a colon in it.
+        </p>
+
+        <div class="demo">
+            <pre class="src">
+clk: 1
+a: 0 0 1 1 0 0 1 .
+b: x x 1 1 . . 0 0
+bus: x x [3: 5Ah] [2: B2h] x</pre>
+            <pre class="out"></pre>
+        </div>
+
+        <h3 id="delimiters">Delimiters</h3>
+        <p>
+            Put <code>t</code> and/or <code>b</code> first after the colon
+            to draw a dotted row <code>╎</code> above or below that signal.
+            The dots sit under every region boundary, so this needs a
+            <code>regions:</code> line, and they keep the signal aligned
+            with the regions above it.  <code>t</code> comes before
+            <code>b</code>, write them in that order.
+        </p>
+        <p>
+            When one signal asks for a row below it and the next one asks
+            for a row above it, they share a single row.
+        </p>
+        <p>
+            If no regions exist this simply create the space, so it can still be useful to separate signals and
+            create groups.
+        </p>
+
+        <div class="demo">
+            <pre class="src">
+clk: 1
+regions: a:2 | b:2 | c:2
+req: t b 0 1 1 1 0 0
+ack: t b 0 0 0 1 1 0</pre>
+            <pre class="out"></pre>
+        </div>
+        <div class="demo">
+            <pre class="src">
+clk: 1
+req:   t b 0 1 1 1 0 0
+data:  0 1 0 1 1 0
+valid: 0 1 0 0 1 0
+err:   t 0 0 0 1 1 0
+</pre>
+            <pre class="out"></pre>
+        </div>
+
+        <h3 id="annotations">Annotations</h3>
+        <p>An annotation labels a cycle. It is written on its own line:</p>
+        <pre class="sheet">
+v @2 "start" @5 "stop"
+^ @4 "check"</pre>
+        <ul>
+            <li>
+                <code>@N</code> is a cycle number and the text goes in
+                double quotes. Both are required: a mark with a missing
+                number or text is skipped. A line can hold several marks.
+            </li>
+            <li>
+                The label hangs from the left edge of cycle
+                <code>N</code>, the same column as a signal transition.
+            </li>
+            <li>
+                The row is drawn where the line is written. Write
+                <code>v</code> above a signal to point down at it, and
+                <code>^</code> below one to point up at it. The character
+                only changes the shape of the corner.
+            </li>
+            <li>
+                Several annotation lines in the same place share one row. If
+                a delimiter row is there, they share that one too, so the
+                dotted lines run behind the labels.
+            </li>
+            <li>
+                A label grows to the right. When it would run past the end
+                of the diagram, or onto a dotted line or another label, it
+                flips to the left instead:
+                <code>text╶╮</code>. If neither side is free it is drawn on
+                the right anyway, over whatever is there.
+            </li>
+            <li>
+                A label cannot contain <code>"</code> or <code>@</code>.
+            </li>
+        </ul>
+
+        <div class="demo">
+            <pre class="src">
+clk: 2
+regions: idle:2 | busy:3 | end:1
+v @2 "start"
+req: 0 0 1 1 1 0
+^ @5 "acknowledged"</pre>
+            <pre class="out"></pre>
+        </div>
+        <div class="demo">
+            <pre class="src">
+clk: 1
+regions: a:3 | b:3
+req: b 0 1 1 1 0 0
+^ @1 "set" @4 "clear"
+ack: 0 0 0 1 1 0</pre>
+            <pre class="out"></pre>
+        </div>
+
+        <h3 id="notes">Notes</h3>
+        <p>
+            <code>note id: text</code>. Notes are printed below the diagram
+            as <code>id: text</code>, in the order written, and wrap to the
+            diagram's width. A note can be as long as you like; the lines
+            after the first line up under its text.
+        </p>
+
+        <div class="demo">
+            <pre class="src">
+clk: 1
+req: 0 1 1 1 1 0 0 0 0 0
+note a: Notes wrap to the width of the diagram, so long text still looks good :)</pre>
+            <pre class="out"></pre>
+        </div>
+
+        <h3 id="not-yet">Not supported yet</h3>
+        <ul>
+            <li>
+                Quoted signal names, so names with colons or the reserved
+                words <code>clk</code>, <code>regions</code> and
+                <code>note</code> cannot be used.
+            </li>
+            <li>
+                Annotations that point at a region name instead of a cycle
+                number, and choosing the label direction by hand.
+            </li>
+            <li>Sizing a hidden clock, so that you can adjust width on a clockless diagram, you will need to delete the clock line manually.</li>
+        </ul>
+    </section>
+
+    <!-- ====================== Examples ====================== -->
+    <section id="examples" class="page">
+        <h2>Examples</h2>
+        <p class="lead">
+            Copy a diagram straight into a code comment, or open it in the
+            playground and tweak it.
+        </p>
+        <p class="lead">
+          The examples below are very basic, and not good examples of real world usage, once I get to use this tool more I hope to add better ones.
+          Feel free to submit your own examples as a pull request.   
+        </p>
+        <div id="example-list" class="examples"></div>
+    </section>
+
+    <footer>
+        splot is made with webassembly so all code runs entirely in your browser.
+    </footer>
+
+    <!-- One card per entry of EXAMPLES; filled in by the script below. -->
+    <template id="example-card">
+        <article class="card">
+            <h3></h3>
+            <p></p>
+            <pre></pre>
+            <div class="actions">
+                <button class="open" type="button">Open in editor</button>
+                <button class="copy" type="button">Copy</button>
+            </div>
+        </article>
+    </template>
+
+    <script type="module">
+        import init, { render } from "./pkg/splot.js";
+
+        // Theme toggle. It is wired before the engine loads so it works
+        // even while the wasm is still downloading. Until the first click
+        // the theme follows the system; after that the choice is saved.
+        const root = document.documentElement;
+        const systemDark = matchMedia("(prefers-color-scheme: dark)");
+
+        document.getElementById("theme").addEventListener("click", () => {
+            const isDark = root.dataset.theme
+                ? root.dataset.theme === "dark"
+                : systemDark.matches;
+
+            root.dataset.theme = isDark ? "light" : "dark";
+            try {
+                localStorage.setItem("theme", root.dataset.theme);
+            } catch { }
+        });
+
+        await init();
+
+        // ------------------------------------------------------------
+        // Examples. To add one, copy a block and edit it: a new card
+        // appears in the Examples section.
+        // ------------------------------------------------------------
+        const EXAMPLES = [
+            {
+                title: "Typical",
+                description:
+                    "A random example that serves as a starting point.",
+                source: `
+clk: # 3  ...
+regions:  start:2 | handshake : 3 | transfer:2+ | end:
+v @1 "a" @4 "assert" @8 "ack"
+ctrl: t b 101.0x.10
+^ @2 "held"
+v @6 "b"
+data: b x.[3:00h][FFh][...]x.
+note a : some some information about the signal
+note b : as many transfers as needed at a rate of one transfer per clock cycle`,
+            },
+            {
+                title: "Bus transfer",
+                description: "A valid strobe framing a data bus.",
+                source: `
+regions: start:2 | transfer:4 | end:2
+clk: 2
+valid: 0 0 1 . . . 0 0
+data: x x [4: 3Ah] x x`,
+            },
+            {
+                title: "Falling-edge clock",
+                description:
+                    "An analog-style clock that starts on a falling edge.",
+                source: `
+clk: analog falling 2 ...
+d: 1 0 1 0
+note a: Data changes on the falling edge.`,
+            },
+            {
+                title: "Handshake with a wait",
+                description:
+                    "Delimiters, a stretched wait and annotations.",
+                source: `
+regions: idle:2 | request:3 | wait:2+ | end:1
+clk: 2
+v @2 "request"
+req: t 0 0 1 1 1 1 0 0
+ack: b 0 0 0 0 0 1 1 0
+^ @5 "acknowledged"`,
+            },
+        ];
+
+        const $ = (selector, root = document) =>
+            root.querySelector(selector);
+
+        const source = $("#source");
+        const output = $("#output");
+
+        function update() {
+            output.textContent = render(source.value);
+        }
+
+        // Copies text and briefly changes the button label to say how it went.
+        async function copyText(button, text) {
+            const label = button.textContent;
+            try {
+                await navigator.clipboard.writeText(text);
+                button.textContent = "Copied";
+            } catch {
+                button.textContent = "Failed";
+            }
+            setTimeout(() => (button.textContent = label), 1000);
+        }
+
+        // Playground
+        source.addEventListener("input", update);
+        $("#copy").addEventListener("click", (event) =>
+            copyText(event.currentTarget, output.textContent),
+        );
+
+        // Syntax demos: render each .src into the .out next to it.
+        for (const demo of document.querySelectorAll(".demo")) {
+            $(".out", demo).textContent = render(
+                $(".src", demo).textContent.trim(),
+            );
+        }
+
+        // Examples section
+        const list = $("#example-list");
+        const template = $("#example-card");
+
+        if (EXAMPLES.length === 0) {
+            list.innerHTML = '<p class="empty">No examples yet.</p>';
+        }
+
+        for (const example of EXAMPLES) {
+            const text = example.source.trim();
+            const diagram = render(text);
+            const card = template.content.cloneNode(true);
+
+            $("h3", card).textContent = example.title;
+            $("p", card).textContent = example.description;
+            $("pre", card).textContent = diagram;
+
+            $(".open", card).addEventListener("click", () => {
+                source.value = text;
+                update();
+                $("#playground").scrollIntoView();
+                source.focus();
+            });
+            $(".copy", card).addEventListener("click", (event) =>
+                copyText(event.currentTarget, diagram),
+            );
+
+            list.append(card);
+        }
+
+        // Start with the first example loaded so the preview is not empty.
+        if (EXAMPLES.length > 0) {
+            source.value = EXAMPLES[0].source.trim();
+        }
+        update();
+    </script>
+</body>
+
+</html>

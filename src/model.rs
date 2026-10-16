@@ -4,6 +4,7 @@ pub struct Model {
     pub clock: Clock,
     pub regions: Vec<Region>,
     pub signals: Vec<Signal>,
+    pub annotations: Vec<Annotation>,
     pub notes: Vec<Note>,
 }
 
@@ -69,6 +70,8 @@ pub struct Clock {
     pub width: u8,
     /// Draw a trailing `···` to show the waveform continues.
     pub tail: bool,
+    /// Draw the clock numbers, starting from zero.
+    pub num: bool,
 }
 
 impl Clock {
@@ -118,7 +121,23 @@ impl Signal {
     }
 }
 
-struct Marker;
+#[derive(Clone, Copy)]
+pub enum Position {
+    Above,
+    Below,
+}
+
+pub struct Marker {
+    pub cycle: usize,
+    pub text: String,
+}
+
+pub struct Annotation {
+    /// How many signals were defined before this line, i.e. which gap it sits in.
+    pub row: usize,
+    pub pos: Position,
+    pub marks: Vec<Marker>,
+}
 
 pub struct Note {
     pub id: String,

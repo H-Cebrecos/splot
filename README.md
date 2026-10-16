@@ -32,6 +32,8 @@ a made up example of how the diagrams are rendered
 
 - size the clock while hidden
 
+- fix "" for signal names so we can render \[1:0] and similar stuff
+
 # test deploy
 
 ```
